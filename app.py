@@ -37,6 +37,70 @@ def get_coordinates(city, api_key):
         app.logger.error(f"Geocoding API request failed: {e}")
         return None, None
 
+@app.route('/forecast', methods=['GET'])
+def get_forecast():
+    city = request.args.get('city')
+    if not city or not city.strip():
+        app.logger.warning("Bad request: City parameter missing or empty")
+        return jsonify({'error': 'City parameter is required and must be a non-empty string'}), 400
+    
+    api_key = os.getenv('OPENWEATHER_API_KEY')
+    if not api_key:
+        app.logger.error('API key not found in environment')
+        return jsonify({'error': 'API key not found'}), 500
+
+    lat, lon = get_coordinates(city, api_key)
+    if lat is None or lon is None:
+        app.logger.info(f"City not found or geocoding failed: {city}")
+        return jsonify({'error': f'City "{city}" not found or geocoding failed'}), 404
+
+    onecall_url = (
+        f"https://api.openweathermap.org/data/3.0/onecall?"
+        f"lat={lat}&lon={lon}&exclude=current,minutely,hourly,alerts&appid={api_key}&units=metric"
+    )
+
+    try:
+        response = requests.get(onecall_url)
+        response.raise_for_status()
+        data = response.json()
+
+        daily_forecasts = []
+
+        for day in data.get('daily', [])[:7]:
+            date_str = datetime.fromtimestamp(day['dt'], tz=timezone.utc).strftime('%Y-%m-%d')
+            day_info = {
+                'date': date_str,
+                'temperature_min': day['temp']['min'],
+                'temperature_max': day['temp']['max'],
+                'humidity': day['humidity'],
+                'weather_description': day['weather'][0]['description']
+            }
+            daily_forecasts.append(day_info)
+
+        app.logger.info(f"7-day forecast fetched successfully for city: {city}")
+        return jsonify({
+            'city': city,
+            'latitude': lat,
+            'longitude': lon,
+            '7_day_forecast': daily_forecasts
+        })
+
+    except requests.HTTPError as http_err:
+        error_msg = f"HTTP error occurred: {http_err} Response: {response.text}"
+        app.logger.error(error_msg)
+        status_code = response.status_code if response else 500
+        return jsonify({'error': 'Forecast API request failed', 'details': response.text}), status_code
+
+    except requests.RequestException as e:
+        app.logger.error(f"Request exception: {e}")
+        return jsonify({'error': 'Failed to fetch forecast data', 'details': str(e)}), 500
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        app.logger.error(f"Unexpected server error in forecast: {e}\n{tb}")
+        return jsonify({'error': 'Unexpected server error', 'details': str(e)}), 500
+
+
 @app.route('/weather', methods=['GET'])
 def get_weather():
     city = request.args.get('city')
