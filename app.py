@@ -6,10 +6,12 @@ import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
 import traceback
+from flask_cors import CORS
 
 load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
 # Configure logging to a file with rotation
 log_handler = RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5)
