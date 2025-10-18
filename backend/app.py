@@ -7,11 +7,17 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone
 import traceback
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
 
 # Configure logging to a file with rotation
 log_handler = RotatingFileHandler('app.log', maxBytes=10*1024*1024, backupCount=5)
@@ -105,6 +111,7 @@ def get_forecast():
 
 @app.route('/weather', methods=['GET'])
 def get_weather():
+    from models import WeatherData # Importing here to avoid circular import issues
     city = request.args.get('city')
     if not city or not city.strip():
         app.logger.warning("Bad request: City parameter missing or empty")
@@ -141,6 +148,16 @@ def get_weather():
             'humidity': current.get('humidity'),
             'description': current.get('weather', [{}])[0].get('description')
         }
+
+        weather_entry = WeatherData(
+            city=city,
+            temperature=current.get('temp'),
+            humidity=current.get('humidity'),
+            description=current.get('weather', [{}])[0].get('description')
+        )
+        db.session.add(weather_entry)
+        db.session.commit()
+
         app.logger.info(f"Weather data fetched successfully for city: {city}")
         return jsonify(weather_info)
 
