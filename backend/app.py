@@ -8,15 +8,19 @@ from datetime import datetime, timezone
 import traceback
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from flask_caching import Cache
 
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
+app.config['CACHE_TYPE'] = 'SimpleCache'
+app.config['CACHE_DEFAULT_TIMEOUT'] = 600
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+cache = Cache(app)
 db = SQLAlchemy(app)
 
 # Configure logging to a file with rotation
@@ -108,7 +112,7 @@ def get_forecast():
         app.logger.error(f"Unexpected server error in forecast: {e}\n{tb}")
         return jsonify({'error': 'Unexpected server error', 'details': str(e)}), 500
 
-
+@cache.cached(timeout=600, query_string=True)
 @app.route('/weather', methods=['GET'])
 def get_weather():
     from models import WeatherData # Importing here to avoid circular import issues
